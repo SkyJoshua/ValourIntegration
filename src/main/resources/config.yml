@@ -1,0 +1,16 @@
+# Required
+botToken: "bot-your-bot-token-here"
+planetId: 0
+channelId: 0
+
+# Valour Messages
+joinMessage: "📈 **{name}** has joined the game."
+leaveMessage: "📉 **{name}** has left the game."
+valourChatMessage: "**{name}** » {message}"
+advancementMessage: "🏆 **{name}** made the advancement **{advancement}**"
+deathMessage: "☠️ **{name}** {reason}"
+serverStart: "✅ **ValourSMP** has started."
+serverStop: "❌ **ValourSMP** has stopped."
+
+# Minecraft Messages
+minecraftChatMessage: "&bValour &f{name} &7» &f{message}"

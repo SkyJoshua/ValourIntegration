@@ -6,12 +6,14 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.microsoft.signalr.HubConnection;
 import com.microsoft.signalr.HubConnectionBuilder;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
-import xyz.skyjoshua.valourIntegration.listeners.ChatListener;
+import xyz.skyjoshua.valourIntegration.listeners.*;
 import xyz.skyjoshua.valourIntegration.models.*;
 
 import java.net.URI;
@@ -84,27 +86,50 @@ public final class ValourIntegration extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new ChatListener(this), this);
+        getServer().getPluginManager().registerEvents(new JoinListener(this), this);
+        getServer().getPluginManager().registerEvents(new LeaveListener(this), this);
+        getServer().getPluginManager().registerEvents(new AdvancementListener(this), this);
+        getServer().getPluginManager().registerEvents(new DeathListener(this), this);
+        getServer().getPluginManager().registerEvents(new ServerLoadListener(this), this);
+
+
+
+        // PremiumVanish Support
+        if (Bukkit.getPluginManager().getPlugin("PremiumVanish") != null) {
+            getServer().getPluginManager().registerEvents(new VanishListener(this), this);
+        }
+
     }
 
     @Override
     public void onDisable() {
         LogToConsole("ValourIntegration has been disabled.");
+        ServerStopMessage();
+    }
+
+    public void ServerStopMessage() {
+        var message = getConfig().getString("serverStop");
+
+        try {
+            var task = SendValourMessage(message);
+            var result = task.get();
+            if (!result.Success) {
+                LogToConsole("Error sending Valour message");
+                LogToConsole(result.Message);
+            }
+        } catch (Exception ex) {
+            LogToConsole("Error sending Valour message");
+            LogToConsole(ex.getMessage());
+        }
     }
 
     private void SetupConfig(){
-        _config = this.getConfig();
-//        _config.addDefault("valourEmail", "user@email.com");
-//        _config.addDefault("valourPassword", "password");
-        _config.addDefault("botToken", "bot-your-bot-token-here");
-        _config.addDefault("channelId", 0);
-        _config.addDefault("planetId", 0);
-        _config.options().copyDefaults(true);
+        saveDefaultConfig();
+        _config = getConfig();
 
         ValourAuth = _config.getString("botToken");
         ChannelId = _config.getLong("channelId");
         PlanetId = _config.getLong("planetId");
-
-        saveConfig();
     }
 
     public Future<TaskResult> SendValourMessage(String content) {
@@ -244,12 +269,25 @@ public final class ValourIntegration extends JavaPlugin {
                 return;
             }
 
+            if (message.content.startsWith("v/ip")) {
+                SendValourMessage("«@m-" + message.authorMemberId + "» The ip for ValourSMP is `valour.sxsc.xyz`");
+                return;
+            }
+
+            if (message.content.startsWith("v/source")) {
+                SendValourMessage("«@m-" + message.authorMemberId + "» You can find my source code here: https://github.com/SkyJoshua/ValourIntegration");
+                return;
+            }
+
             var user = GetUserAsync(message.authorUserId).get();
 
-            var broadcast = ChatColor.AQUA + "Valour " + ChatColor.WHITE + "<" + user.name + "> " + message.content;
+            Component msg = LegacyComponentSerializer.legacyAmpersand().deserialize(
+                    _config.getString("minecraftChatMessage")
+                            .replace("{name}", user.name)
+                            .replace("{message}", message.content)
+            );
 
-//            LogToConsole("Valour: " + message.content);
-            Bukkit.broadcastMessage(broadcast);
+            Bukkit.broadcast(msg);
         } catch (Exception ex) {
             LogToConsole("Error fetching user " + message.authorUserId);
             LogToConsole(ex.getMessage());

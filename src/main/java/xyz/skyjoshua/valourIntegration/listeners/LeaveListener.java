@@ -1,35 +1,33 @@
 package xyz.skyjoshua.valourIntegration.listeners;
 
-import io.papermc.paper.event.player.AsyncChatEvent;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
-import net.kyori.adventure.translation.GlobalTranslator;
+import de.myzelyam.api.vanish.VanishAPI;
+import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
 
-import java.util.Locale;
+import java.net.http.WebSocket;
 
-public class ChatListener implements Listener {
+public class LeaveListener implements Listener {
 
     private final ValourIntegration _valourIntegration;
 
-    public ChatListener(ValourIntegration valourIntegration) {
+    public LeaveListener(ValourIntegration valourIntegration) {
         _valourIntegration = valourIntegration;
     }
 
-
-
     @EventHandler
-    public void OnMinecraftChat(AsyncChatEvent event) {
+    public void OnPlayerJoin(PlayerQuitEvent event) {
+        var message = _valourIntegration.getConfig().getString("leaveMessage")
+                .replace("{name}", event.getPlayer().getName());
 
-        var content = PlainTextComponentSerializer.plainText().serialize(
-                GlobalTranslator.render(event.message(), Locale.ENGLISH)
-        );
-
-        var message = _valourIntegration.getConfig().getString("valourChatMessage")
-                .replace("{name}", event.getPlayer().getName())
-                .replace("{message}", content);
+        if (Bukkit.getPluginManager().getPlugin("PremiumVanish") != null) {
+            if (VanishAPI.getInvisiblePlayers().contains(event.getPlayer().getUniqueId())) {
+                return;
+            }
+        }
 
         try {
             var task = _valourIntegration.SendValourMessage(message);

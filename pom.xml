@@ -6,7 +6,7 @@
 
     <groupId>xyz.skyjoshua</groupId>
     <artifactId>ValourIntegration</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
     <packaging>jar</packaging>
 
     <name>ValourIntegration</name>
@@ -14,10 +14,12 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <minecraft.version>1.21</minecraft.version>
     </properties>
 
     <build>
         <defaultGoal>clean package</defaultGoal>
+        <finalName>ValourIntegration</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -55,6 +57,10 @@
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -73,6 +79,13 @@
             <groupId>com.microsoft.signalr</groupId>
             <artifactId>signalr</artifactId>
             <version>1.0.0</version>
+        </dependency>
+        <!-- PremiumVanishAPI -->
+        <dependency>
+            <groupId>com.github.LeonMangler</groupId>
+            <artifactId>PremiumVanishAPI</artifactId>
+            <version>2.9.0-4</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 </project>

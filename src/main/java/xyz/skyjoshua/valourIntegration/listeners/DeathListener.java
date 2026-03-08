@@ -1,35 +1,27 @@
 package xyz.skyjoshua.valourIntegration.listeners;
 
-import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
-import net.kyori.adventure.translation.GlobalTranslator;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
 
-import java.util.Locale;
-
-public class ChatListener implements Listener {
+public class DeathListener implements Listener {
 
     private final ValourIntegration _valourIntegration;
 
-    public ChatListener(ValourIntegration valourIntegration) {
+    public DeathListener(ValourIntegration valourIntegration) {
         _valourIntegration = valourIntegration;
     }
 
-
-
     @EventHandler
-    public void OnMinecraftChat(AsyncChatEvent event) {
+    public void OnPlayerDeath(PlayerDeathEvent event) {
 
-        var content = PlainTextComponentSerializer.plainText().serialize(
-                GlobalTranslator.render(event.message(), Locale.ENGLISH)
-        );
+        var death = PlainTextComponentSerializer.plainText().serialize(event.deathMessage());
 
-        var message = _valourIntegration.getConfig().getString("valourChatMessage")
+        var message = _valourIntegration.getConfig().getString("deathMessage")
                 .replace("{name}", event.getPlayer().getName())
-                .replace("{message}", content);
+                .replace("{reason}", death.replace(event.getPlayer().getName() + " ", ""));
 
         try {
             var task = _valourIntegration.SendValourMessage(message);

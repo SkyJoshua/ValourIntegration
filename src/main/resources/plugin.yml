@@ -1,7 +1,9 @@
 name: ValourIntegration
-version: '1.0'
+version: '${project.version}'
 main: xyz.skyjoshua.valourIntegration.ValourIntegration
-api-version: '1.21'
-authors: [ SkyJoshua, Appocryptha ]
-description: Core mod for Liminal based things
+api-version: '${minecraft.version}'
+authors: [ SkyJoshua ]
+description: Integration between Valour.gg and Minecraft!
 website: https://skyjoshua.xyz
+softdepend:
+  - PremiumVanish
