@@ -265,9 +265,11 @@ public final class ValourIntegration extends JavaPlugin {
 
     private void OnValourMessage(PlanetMessage message) {
         try {
-            if (message.authorUserId == _user.get("id").getAsLong()) {
-                return;
-            }
+            if (message.authorUserId == _user.get("id").getAsLong()) return;
+
+            var user = GetUserAsync(message.authorUserId).get();
+
+            if (user.bot) return;
 
             if (message.content.startsWith("v/ip")) {
                 SendValourMessage("«@m-" + message.authorMemberId + "» The ip for ValourSMP is `valour.sxsc.xyz`");
@@ -278,8 +280,6 @@ public final class ValourIntegration extends JavaPlugin {
                 SendValourMessage("«@m-" + message.authorMemberId + "» You can find my source code here: https://github.com/SkyJoshua/ValourIntegration");
                 return;
             }
-
-            var user = GetUserAsync(message.authorUserId).get();
 
             Component msg = LegacyComponentSerializer.legacyAmpersand().deserialize(
                     _config.getString("minecraftChatMessage")
