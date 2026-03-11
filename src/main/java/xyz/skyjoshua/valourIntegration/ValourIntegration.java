@@ -82,15 +82,6 @@ public final class ValourIntegration extends JavaPlugin {
         LogToConsole("Connecting to SignalR...");
         SetupSignalR();
 
-        var connectResult = ConnectToChannel(ChannelId);
-        if (!connectResult.Success) {
-            LogToConsole("Failed to connect to channel " + ChannelId);
-            LogToConsole("Chat cannot be received from Valour!");
-            LogToConsole(connectResult.Message);
-        } else {
-            LogToConsole("Connected to channel " + ChannelId);
-        }
-
         if (Bukkit.getPluginManager().getPlugin("SuperVanish") != null) {
             hasVanish = true;
         }
