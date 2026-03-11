@@ -11,6 +11,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.command.defaults.BukkitCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -22,6 +23,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -255,14 +257,18 @@ public final class ValourIntegration extends JavaPlugin {
 
         _signalR.on("Channel-CurrentlyTyping-Update", (update) -> {
         }, ChannelTypingUpdate.class);
+
+        connectSignalR();
     }
 
     private boolean _hasConnected = false;
 
     private void connectSignalR() {
-        var startError = _signalR.start().blockingGet();
-        if (startError != null) {
-            LogToConsole("SignalR connection error: " + startError.getMessage());
+        while (true) {
+            var startError = _signalR.start().blockingGet();
+            if (startError == null) break;
+
+            LogToConsole("SignalR connection failed: " + startError.getMessage());
             LogToConsole("Retrying in 5 seconds...");
 
             try {
@@ -270,7 +276,7 @@ public final class ValourIntegration extends JavaPlugin {
             } catch (InterruptedException ignored) {}
         }
 
-        var authResult = _signalR.invoke(TaskResult.class, "authorize", ValourAuth).blockingGet();
+        var authResult = _signalR.invoke(TaskResult.class, "Authorize", ValourAuth).blockingGet();
         LogToConsole(authResult.Message);
 
         var joinResult = ConnectToChannel(ChannelId);
@@ -281,16 +287,17 @@ public final class ValourIntegration extends JavaPlugin {
         }
 
         if (_hasConnected) {
-            SendValourMessage(_config.getString("signalRReconnect"));
+            SendValourMessage("🔄 Reconnected to SignalR.");
         }
+
+        _hasConnected = true;
     }
 
     private void reconnectSignalR() {
         try {
             _signalR.stop().blockingAwait();;
-        } catch (Exception ignored) {
+        } catch (Exception ignored) {}
             connectSignalR();
-        }
     }
 
     private boolean isVanished(Player player) {
@@ -337,6 +344,36 @@ public final class ValourIntegration extends JavaPlugin {
                 return;
             }
 
+            if (message.content.startsWith("v/cc")) {
+
+                MemberHasPermissionAsync(message.authorMemberId, PlanetPermissions.Manage)
+                        .thenAccept(hasPerm -> {
+                            if (!hasPerm) {
+                                SendValourMessage(_config.getString("noPerm")
+                                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
+                                );
+                                return;
+                            }
+
+                            var args = message.content.split(" ");
+                            if (args.length < 2) {
+                                SendValourMessage("Please enter a command to send.");
+                                return;
+                            }
+
+                            String cmd = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+
+                            SendValourMessage(_config.getString("consoleCommand")
+                                    .replace("{ping}", "«@m-" + message.authorMemberId + "»")
+                                    .replace("{command}", cmd));
+                            Bukkit.getScheduler().runTask(this, () -> {
+                                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
+                            });
+
+                        });
+                return;
+            }
+
             Component msg = LegacyComponentSerializer.legacyAmpersand().deserialize(
                     _config.getString("minecraftChatMessage")
                             .replace("{name}", user.name)
@@ -347,6 +384,64 @@ public final class ValourIntegration extends JavaPlugin {
         } catch (Exception ex) {
             LogToConsole("Error fetching user " + message.authorUserId);
             LogToConsole(ex.getMessage());
+        }
+    }
+
+    public CompletableFuture<Boolean> MemberHasPermissionAsync(long memberId, long permission) {
+        try {
+            HttpRequest memberRequest = HttpRequest.newBuilder()
+                    .uri(new URI(BaseUrl + "members/" + memberId))
+                    .headers(BaseHeaders)
+                    .GET()
+                    .build();
+
+            return http.sendAsync(memberRequest, HttpResponse.BodyHandlers.ofString())
+                    .thenCompose(memberResponse -> {
+                        var member = JsonParser.parseString(memberResponse.body()).getAsJsonObject();
+                        var roleMembership = member.getAsJsonObject("roleMembership");
+
+                        long[] rf = new long[]{
+                                roleMembership.get("rf0").getAsLong(),
+                                roleMembership.get("rf1").getAsLong(),
+                                roleMembership.get("rf2").getAsLong(),
+                                roleMembership.get("rf3").getAsLong()
+                        };
+
+                        try {
+                            HttpRequest rolesRequest = HttpRequest.newBuilder()
+                                    .uri(new URI(BaseUrl + "planets/" + PlanetId + "/roles"))
+                                    .headers(BaseHeaders)
+                                    .GET()
+                                    .build();
+
+                            return http.sendAsync(rolesRequest, HttpResponse.BodyHandlers.ofString())
+                                    .thenApply(rolesResponse -> {
+                                        var roles = JsonParser.parseString(rolesResponse.body()).getAsJsonArray();
+                                        long combined = 0L;
+
+                                        for (var roleElement : roles) {
+                                            var role = roleElement.getAsJsonObject();
+                                            int flagBitIndex = role.get("flagBitIndex").getAsInt();
+                                            int rfIndex = flagBitIndex / 64;
+                                            int bitIndex = flagBitIndex % 64;
+
+                                            if ((rf[rfIndex] & (1L << bitIndex)) != 0) {
+                                                if (role.get("isAdmin").getAsBoolean()) return true;
+                                                combined |= role.get("permissions").getAsLong();
+                                            }
+                                        }
+
+                                        return combined == -1L || (combined & permission) == permission;
+                                    });
+                        } catch (Exception ex) {
+                            LogToConsole("Error fetching roles: " + ex.getMessage());
+                            return CompletableFuture.completedFuture(false);
+                        }
+                    });
+        } catch (Exception ex) {
+            LogToConsole("Error checking permission for member " + memberId);
+            LogToConsole(ex.getMessage());
+            return CompletableFuture.completedFuture(false);
         }
     }
 

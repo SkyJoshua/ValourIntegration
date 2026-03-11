@@ -14,7 +14,9 @@ serverStop: "❌ **ValourSMP** has stopped."
 signalRReconnect: "🔃 Reconnected to SignalR."
 ipCommand: "{ping} The ips for ValourSMP are - Java: `valour.sxsc.xyz` Bedrock: `valourbr.sxsc.xyz`"
 sourceCommand: "{ping} You can find my source code here: https://github.com/SkyJoshua/ValourIntegration"
-listCommand: "{ping} ({playercount}/{maxplayers}) {players}"
+listCommand: "📜 {ping} ({playercount}/{maxplayers}) {players}"
+consoleCommand: "⌨️ {ping} Sent the command: {command}"
+noPerm: "🚫 {ping} You do not have permission to execute this command."
 
 # Minecraft Messages
 minecraftChatMessage: "&bValour &f{name} &7» &f{message}"

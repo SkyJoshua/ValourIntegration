@@ -1,6 +1,7 @@
 package xyz.skyjoshua.valourIntegration.models;
 
 import java.util.Date;
+import java.util.concurrent.CompletableFuture;
 
 public class PlanetMessage {
     public long id;
