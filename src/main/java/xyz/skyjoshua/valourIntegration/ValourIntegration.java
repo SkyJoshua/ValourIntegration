@@ -6,11 +6,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.microsoft.signalr.HubConnection;
 import com.microsoft.signalr.HubConnectionBuilder;
+import de.myzelyam.api.vanish.VanishAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 import xyz.skyjoshua.valourIntegration.listeners.*;
@@ -21,9 +23,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 public final class ValourIntegration extends JavaPlugin {
 
@@ -39,6 +43,8 @@ public final class ValourIntegration extends JavaPlugin {
     private JsonObject _member;
 
     private String[] BaseHeaders;
+
+    public boolean hasVanish;
 
 
     public @Nullable String ValourAuth;
@@ -85,6 +91,14 @@ public final class ValourIntegration extends JavaPlugin {
             LogToConsole("Connected to channel " + ChannelId);
         }
 
+        if (Bukkit.getPluginManager().getPlugin("SuperVanish") != null) {
+            hasVanish = true;
+        }
+
+        if (Bukkit.getPluginManager().getPlugin("PremiumVanish") != null) {
+            hasVanish = true;
+        }
+
         getServer().getPluginManager().registerEvents(new ChatListener(this), this);
         getServer().getPluginManager().registerEvents(new JoinListener(this), this);
         getServer().getPluginManager().registerEvents(new LeaveListener(this), this);
@@ -92,10 +106,8 @@ public final class ValourIntegration extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new DeathListener(this), this);
         getServer().getPluginManager().registerEvents(new ServerLoadListener(this), this);
 
-
-
-        // PremiumVanish Support
-        if (Bukkit.getPluginManager().getPlugin("PremiumVanish") != null) {
+        // SuperVanish/PremiumVanish Support
+        if (hasVanish) {
             getServer().getPluginManager().registerEvents(new VanishListener(this), this);
         }
 
@@ -110,17 +122,12 @@ public final class ValourIntegration extends JavaPlugin {
     public void ServerStopMessage() {
         var message = getConfig().getString("serverStop");
 
-        try {
-            var task = SendValourMessage(message);
-            var result = task.get();
+        SendValourMessage(message).thenAccept(result -> {
             if (!result.Success) {
                 LogToConsole("Error sending Valour message");
                 LogToConsole(result.Message);
             }
-        } catch (Exception ex) {
-            LogToConsole("Error sending Valour message");
-            LogToConsole(ex.getMessage());
-        }
+        });
     }
 
     private void SetupConfig(){
@@ -132,7 +139,7 @@ public final class ValourIntegration extends JavaPlugin {
         PlanetId = _config.getLong("planetId");
     }
 
-    public Future<TaskResult> SendValourMessage(String content) {
+    public CompletableFuture<TaskResult> SendValourMessage(String content) {
 
         PlanetMessage message = new PlanetMessage();
         message.planetId = PlanetId;
@@ -238,21 +245,17 @@ public final class ValourIntegration extends JavaPlugin {
                 .build();
 
         _signalR.onClosed((ex) -> {
-            LogToConsole("Valour SignalR connection closed. Reconnecting...");
-            var restartError = _signalR.start().blockingGet();
-            if (restartError != null) {
-                LogToConsole(restartError.getMessage());
-            }
-        });
+            LogToConsole("Valour SignalR connection closed. Reconnecting in 5 seconds...");
+            if (ex != null) LogToConsole(ex.getMessage());
 
-        var startError = _signalR.start().blockingGet();
-        if (startError != null) {
-            LogToConsole(startError.getMessage());
-        }
-        
-        var authTask = _signalR.invoke(TaskResult.class, "Authorize", ValourAuth);
-        var authResult = authTask.blockingGet();
-        LogToConsole(authResult.Message);
+            Bukkit.getScheduler().runTaskLaterAsynchronously(this, () -> {
+                try {
+                    reconnectSignalR();
+                } catch (Exception e) {
+                    LogToConsole("Failed to reconnect: " + e.getMessage());
+                }
+            }, 100L);
+        });
 
         _signalR.on("Relay", this::OnValourMessage, PlanetMessage.class);
 
@@ -261,6 +264,49 @@ public final class ValourIntegration extends JavaPlugin {
 
         _signalR.on("Channel-CurrentlyTyping-Update", (update) -> {
         }, ChannelTypingUpdate.class);
+    }
+
+    private boolean _hasConnected = false;
+
+    private void connectSignalR() {
+        var startError = _signalR.start().blockingGet();
+        if (startError != null) {
+            LogToConsole("SignalR connection error: " + startError.getMessage());
+            LogToConsole("Retrying in 5 seconds...");
+
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException ignored) {}
+        }
+
+        var authResult = _signalR.invoke(TaskResult.class, "authorize", ValourAuth).blockingGet();
+        LogToConsole(authResult.Message);
+
+        var joinResult = ConnectToChannel(ChannelId);
+        if (!joinResult.Success) {
+            LogToConsole("Failed to join channel: " + joinResult.Message);
+        } else {
+            LogToConsole("Rejoined channel " + ChannelId);
+        }
+
+        if (_hasConnected) {
+            SendValourMessage(_config.getString("signalRReconnect"));
+        }
+    }
+
+    private void reconnectSignalR() {
+        try {
+            _signalR.stop().blockingAwait();;
+        } catch (Exception ignored) {
+            connectSignalR();
+        }
+    }
+
+    private boolean isVanished(Player player) {
+        if (hasVanish) {
+            return VanishAPI.getInvisiblePlayers().contains(player.getUniqueId());
+        }
+        return false;
     }
 
     private void OnValourMessage(PlanetMessage message) {
@@ -272,12 +318,31 @@ public final class ValourIntegration extends JavaPlugin {
             if (user.bot) return;
 
             if (message.content.startsWith("v/ip")) {
-                SendValourMessage("«@m-" + message.authorMemberId + "» The ip for ValourSMP is `valour.sxsc.xyz`");
+                SendValourMessage(_config.getString("ipCommand")
+                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
+                );
                 return;
             }
 
             if (message.content.startsWith("v/source")) {
-                SendValourMessage("«@m-" + message.authorMemberId + "» You can find my source code here: https://github.com/SkyJoshua/ValourIntegration");
+                SendValourMessage(_config.getString("sourceCommand")
+                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
+                );
+                return;
+            }
+
+            if (message.content.startsWith("v/list")) {
+                List<String> visiblePlayers = Bukkit.getOnlinePlayers().stream()
+                        .filter(p -> !isVanished(p))
+                        .map(Player::getName)
+                        .collect(Collectors.toList());
+
+                SendValourMessage(_config.getString("listCommand")
+                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
+                        .replace("{playercount}", ""+visiblePlayers.size())
+                        .replace("{maxplayers}", ""+Bukkit.getMaxPlayers())
+                        .replace("{players}", String.join(", ", visiblePlayers))
+                );
                 return;
             }
 

@@ -23,16 +23,11 @@ public class DeathListener implements Listener {
                 .replace("{name}", event.getPlayer().getName())
                 .replace("{reason}", death.replace(event.getPlayer().getName() + " ", ""));
 
-        try {
-            var task = _valourIntegration.SendValourMessage(message);
-            var result = task.get();
+        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);
             }
-        } catch (Exception ex) {
-            _valourIntegration.LogToConsole("Error sending Valour message");
-            _valourIntegration.LogToConsole(ex.getMessage());
-        }
+        });
     }
 }

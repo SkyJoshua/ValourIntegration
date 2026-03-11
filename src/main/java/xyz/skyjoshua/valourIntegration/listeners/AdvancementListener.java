@@ -1,5 +1,6 @@
 package xyz.skyjoshua.valourIntegration.listeners;
 
+import io.papermc.paper.advancement.AdvancementDisplay;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.translation.GlobalTranslator;
 import org.bukkit.event.EventHandler;
@@ -20,24 +21,23 @@ public class AdvancementListener implements Listener {
     @EventHandler
     public void OnAdvancementGet(PlayerAdvancementDoneEvent event) {
 
+        AdvancementDisplay display = event.getAdvancement().getDisplay();
+        if (display == null) return;
+        if (!display.doesAnnounceToChat()) return;
+
         var title = PlainTextComponentSerializer.plainText().serialize(
-                GlobalTranslator.render(event.getAdvancement().getDisplay().title(), Locale.ENGLISH)
+                GlobalTranslator.render(display.title(), Locale.ENGLISH)
         );
 
         var message = _valourIntegration.getConfig().getString("advancementMessage")
                 .replace("{name}", event.getPlayer().getName())
                 .replace("{advancement}", title);
 
-        try {
-            var task = _valourIntegration.SendValourMessage(message);
-            var result = task.get();
+        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);
             }
-        } catch (Exception ex) {
-            _valourIntegration.LogToConsole("Error sending Valour message");
-            _valourIntegration.LogToConsole(ex.getMessage());
-        }
+        });
     }
 }

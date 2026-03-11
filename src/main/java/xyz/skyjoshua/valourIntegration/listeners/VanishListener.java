@@ -23,17 +23,12 @@ public class VanishListener implements Listener {
             var message = _valourIntegration.getConfig().getString("leaveMessage")
                     .replace("{name}", event.getPlayer().getName());
 
-            try {
-                var task = _valourIntegration.SendValourMessage(message);
-                var result = task.get();
+            _valourIntegration.SendValourMessage(message).thenAccept(result -> {
                 if (!result.Success) {
                     _valourIntegration.LogToConsole("Error sending Valour message");
                     _valourIntegration.LogToConsole(result.Message);
                 }
-            } catch (Exception ex) {
-                _valourIntegration.LogToConsole("Error sending Valour message");
-                _valourIntegration.LogToConsole(ex.getMessage());
-            }
+            });
         }
 
     }
@@ -45,17 +40,12 @@ public class VanishListener implements Listener {
             var message = _valourIntegration.getConfig().getString("joinMessage")
                     .replace("{name}", event.getPlayer().getName());
 
-            try {
-                var task = _valourIntegration.SendValourMessage(message);
-                var result = task.get();
+            _valourIntegration.SendValourMessage(message).thenAccept(result -> {
                 if (!result.Success) {
                     _valourIntegration.LogToConsole("Error sending Valour message");
                     _valourIntegration.LogToConsole(result.Message);
                 }
-            } catch (Exception ex) {
-                _valourIntegration.LogToConsole("Error sending Valour message");
-                _valourIntegration.LogToConsole(ex.getMessage());
-            }
+            });
         }
 
     }
