@@ -5,62 +5,68 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.microsoft.signalr.HubConnection;
-import com.microsoft.signalr.HubConnectionBuilder;
 import de.myzelyam.api.vanish.VanishAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.command.defaults.BukkitCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
+import xyz.skyjoshua.valourIntegration.commands.minecraft.MinecraftLink;
+import xyz.skyjoshua.valourIntegration.commands.valour.ConsoleCommand;
+import xyz.skyjoshua.valourIntegration.commands.valour.PlayerList;
+import xyz.skyjoshua.valourIntegration.commands.valour.ValourLink;
+import xyz.skyjoshua.valourIntegration.helpers.MappingHelper;
+import xyz.skyjoshua.valourIntegration.helpers.SignalRHelper;
+import xyz.skyjoshua.valourIntegration.helpers.ValourMessage;
 import xyz.skyjoshua.valourIntegration.listeners.*;
 import xyz.skyjoshua.valourIntegration.models.*;
+import static xyz.skyjoshua.valourIntegration.helpers.UserHelper.GetUserAsync;
 
+import java.io.Console;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+
+
 
 public final class ValourIntegration extends JavaPlugin {
 
-    private HubConnection _signalR;
+    public HubConnection[] _signalR = new HubConnection[1];
+    public boolean[] _hasConnected = new boolean[]{false};
     private FileConfiguration _config;
     public HttpClient http;
     public final Gson Gson = new GsonBuilder().create();
     public final String BaseUrl = "https://api.valour.gg/api/";
     public final String _hubUrl = "https://api.valour.gg/hubs/core";
 
-    private String _primaryNode;
-    private JsonObject _user;
-    private JsonObject _member;
+    public String _primaryNode;
+    public JsonObject _user;
+    public JsonObject _member;
 
-    private String[] BaseHeaders;
+    public String[] BaseHeaders;
 
     public boolean hasVanish;
-
 
     public @Nullable String ValourAuth;
     public long ChannelId;
     public long PlanetId;
 
-    public HashMap<String, User> UserIdMap = new HashMap<String, User>();
+    public ConcurrentHashMap<UUID, Long> UUIDToValourMap = new ConcurrentHashMap<UUID, Long>();
 
-    private User GetCachedUser(long userId) {
-        return UserIdMap.getOrDefault(String.valueOf(userId), null);
-    }
+    public ConcurrentHashMap<String, User> UserIdMap = new ConcurrentHashMap<String, User>();
+    public ConcurrentHashMap<String, PlanetMember> MemberIdMap = new ConcurrentHashMap<String, PlanetMember>();
 
-    private void SetCachedUser(User user) {
-        UserIdMap.put(String.valueOf(user.id), user);
+    public ConcurrentHashMap<String, UUID> _codeToUUID = new ConcurrentHashMap<String, UUID>();
+
+    public void AddLinkCode(String code, UUID playerUUID) {
+        _codeToUUID.put(code, playerUUID);
     }
 
     public void LogToConsole(String message) {
@@ -70,6 +76,7 @@ public final class ValourIntegration extends JavaPlugin {
     @Override
     public void onLoad() {
         LogToConsole("ValourIntegration has been loaded");
+        MappingHelper.LoadData(this);
     }
 
     @Override
@@ -82,7 +89,7 @@ public final class ValourIntegration extends JavaPlugin {
 
         LogToConsole("ValourIntegration has been enabled.");
         LogToConsole("Connecting to SignalR...");
-        SetupSignalR();
+        SignalRHelper.Setup(this, _signalR, _hasConnected);
 
         if (Bukkit.getPluginManager().getPlugin("SuperVanish") != null) {
             hasVanish = true;
@@ -104,6 +111,7 @@ public final class ValourIntegration extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new VanishListener(this), this);
         }
 
+        SetupCommands();;
     }
 
     @Override
@@ -112,10 +120,14 @@ public final class ValourIntegration extends JavaPlugin {
         ServerStopMessage();
     }
 
+    private void SetupCommands() {
+        this.getCommand("link").setExecutor(new MinecraftLink(this));
+    }
+
     public void ServerStopMessage() {
         var message = getConfig().getString("serverStop");
 
-        SendValourMessage(message).thenAccept(result -> {
+        ValourMessage.SendAsync(this, message).thenAccept(result -> {
             if (!result.Success) {
                 LogToConsole("Error sending Valour message");
                 LogToConsole(result.Message);
@@ -130,47 +142,6 @@ public final class ValourIntegration extends JavaPlugin {
         ValourAuth = _config.getString("botToken");
         ChannelId = _config.getLong("channelId");
         PlanetId = _config.getLong("planetId");
-    }
-
-    public CompletableFuture<TaskResult> SendValourMessage(String content) {
-
-        PlanetMessage message = new PlanetMessage();
-        message.planetId = PlanetId;
-        message.channelId = ChannelId;
-        message.authorUserId = _user.get("id").getAsLong();
-        message.authorMemberId = _member.get("id").getAsLong();
-        message.fingerprint = UUID.randomUUID().toString();
-        message.content = content;
-
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(new URI(BaseUrl + "messages"))
-                    .headers(BaseHeaders)
-                    .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(Gson.toJson(message)))
-                    .build();
-
-            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                    .thenApply((result) -> {
-                        var res = new TaskResult();
-                        res.Message = result.body();
-
-                        if (result.statusCode() == 200) {
-                            res.Success = true;
-                        }
-
-                        return res;
-                    });
-
-        } catch (Exception ex) {
-            LogToConsole("Error sending message to Valour");
-            LogToConsole(ex.getMessage());
-
-            var result = new TaskResult();
-            result.Message = "Error sending message to Valour";
-            return CompletableFuture.supplyAsync(() -> { return result; });
-
-        }
     }
 
     private void SetupHttp(){
@@ -231,146 +202,61 @@ public final class ValourIntegration extends JavaPlugin {
         }
     }
 
-    private void SetupSignalR() {
-        _signalR = HubConnectionBuilder.create(_hubUrl)
-                .withHeader("authorization", ValourAuth)
-                .withHeader("x-server-select", _primaryNode)
-                .build();
-
-        _signalR.onClosed((ex) -> {
-            LogToConsole("Valour SignalR connection closed. Reconnecting in 5 seconds...");
-            if (ex != null) LogToConsole(ex.getMessage());
-
-            Bukkit.getScheduler().runTaskLaterAsynchronously(this, () -> {
-                try {
-                    reconnectSignalR();
-                } catch (Exception e) {
-                    LogToConsole("Failed to reconnect: " + e.getMessage());
-                }
-            }, 100L);
-        });
-
-        _signalR.on("Relay", this::OnValourMessage, PlanetMessage.class);
-
-        _signalR.on("Channel-Watching-Update", (update) -> {
-        }, ChannelWatchingUpdate.class);
-
-        _signalR.on("Channel-CurrentlyTyping-Update", (update) -> {
-        }, ChannelTypingUpdate.class);
-
-        connectSignalR();
-    }
-
-    private boolean _hasConnected = false;
-
-    private void connectSignalR() {
-        while (true) {
-            var startError = _signalR.start().blockingGet();
-            if (startError == null) break;
-
-            LogToConsole("SignalR connection failed: " + startError.getMessage());
-            LogToConsole("Retrying in 5 seconds...");
-
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException ignored) {}
-        }
-
-        var authResult = _signalR.invoke(TaskResult.class, "Authorize", ValourAuth).blockingGet();
-        LogToConsole(authResult.Message);
-
-        var joinResult = ConnectToChannel(ChannelId);
-        if (!joinResult.Success) {
-            LogToConsole("Failed to join channel: " + joinResult.Message);
-        } else {
-            LogToConsole("Rejoined channel " + ChannelId);
-        }
-
-        if (_hasConnected) {
-            SendValourMessage("🔄 Reconnected to SignalR.");
-        }
-
-        _hasConnected = true;
-    }
-
-    private void reconnectSignalR() {
-        try {
-            _signalR.stop().blockingAwait();;
-        } catch (Exception ignored) {}
-            connectSignalR();
-    }
-
-    private boolean isVanished(Player player) {
+    public boolean isVanished(Player player) {
         if (hasVanish) {
             return VanishAPI.getInvisiblePlayers().contains(player.getUniqueId());
         }
         return false;
     }
 
-    private void OnValourMessage(PlanetMessage message) {
+    public void OnValourMessage(PlanetMessage message) {
         try {
             if (message.authorUserId == _user.get("id").getAsLong()) return;
-
-            var user = GetUserAsync(message.authorUserId).get();
-
+            var user = GetUserAsync(this, message.authorUserId).get();
             if (user.bot) return;
 
-            if (message.content.startsWith("v/ip")) {
-                SendValourMessage(_config.getString("ipCommand")
-                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
-                );
-                return;
-            }
+            String prefix = _config.getString("commandPrefix");
 
-            if (message.content.startsWith("v/source")) {
-                SendValourMessage(_config.getString("sourceCommand")
-                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
-                );
-                return;
-            }
+            if (message.content.startsWith(prefix)) {
+                String withoutPrefix = message.content.substring(prefix.length());
+                String[] parts = withoutPrefix.split(" ");
+                if (parts.length == 0) return;
+                String command = parts[0].toLowerCase();
 
-            if (message.content.startsWith("v/list")) {
-                List<String> visiblePlayers = Bukkit.getOnlinePlayers().stream()
-                        .filter(p -> !isVanished(p))
-                        .map(Player::getName)
-                        .collect(Collectors.toList());
+                switch (command) {
+                    case "ip":
+                        String ip = _config.getString("ipCommand")
+                                .replace("{ping}", "«@m-" + message.authorMemberId + "»");
+                        ValourMessage.ReplyAsync(this, ip, message.id);
+                        break;
 
-                SendValourMessage(_config.getString("listCommand")
-                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
-                        .replace("{playercount}", ""+visiblePlayers.size())
-                        .replace("{maxplayers}", ""+Bukkit.getMaxPlayers())
-                        .replace("{players}", String.join(", ", visiblePlayers))
-                );
-                return;
-            }
+                    case "source":
+                    case "src":
+                        String src = _config.getString("sourceCommand")
+                                .replace("{ping}", "«@m-" + message.authorMemberId + "»");
+                        ValourMessage.ReplyAsync(this, src, message.id);
+                        break;
 
-            if (message.content.startsWith("v/cc")) {
+                    case "list":
+                    case "plist":
+                    case "players":
+                        PlayerList.Execute(this, message);
+                        break;
 
-                MemberHasPermissionAsync(message.authorMemberId, PlanetPermissions.Manage)
-                        .thenAccept(hasPerm -> {
-                            if (!hasPerm) {
-                                SendValourMessage(_config.getString("noPerm")
-                                        .replace("{ping}", "«@m-" + message.authorMemberId + "»")
-                                );
-                                return;
-                            }
+                    case "cc":
+                        ConsoleCommand.Execute(this, message);
+                        break;
 
-                            var args = message.content.split(" ");
-                            if (args.length < 2) {
-                                SendValourMessage("Please enter a command to send.");
-                                return;
-                            }
+                    case "link":
+                        ValourLink.Execute(this, message);
+                        break;
 
-                            String cmd = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
-
-                            SendValourMessage(_config.getString("consoleCommand")
-                                    .replace("{ping}", "«@m-" + message.authorMemberId + "»")
-                                    .replace("{command}", cmd));
-                            Bukkit.getScheduler().runTask(this, () -> {
-                                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
-                            });
-
-                        });
+                    default:
+                        String defmsg = _config.getString("valourInvalidCommand")
+                                .replace("{cmd}", command);
+                        ValourMessage.ReplyAsync(this, defmsg, message.id);
+                        break;
+                }
                 return;
             }
 
@@ -385,94 +271,5 @@ public final class ValourIntegration extends JavaPlugin {
             LogToConsole("Error fetching user " + message.authorUserId);
             LogToConsole(ex.getMessage());
         }
-    }
-
-    public CompletableFuture<Boolean> MemberHasPermissionAsync(long memberId, long permission) {
-        try {
-            HttpRequest memberRequest = HttpRequest.newBuilder()
-                    .uri(new URI(BaseUrl + "members/" + memberId))
-                    .headers(BaseHeaders)
-                    .GET()
-                    .build();
-
-            return http.sendAsync(memberRequest, HttpResponse.BodyHandlers.ofString())
-                    .thenCompose(memberResponse -> {
-                        var member = JsonParser.parseString(memberResponse.body()).getAsJsonObject();
-                        var roleMembership = member.getAsJsonObject("roleMembership");
-
-                        long[] rf = new long[]{
-                                roleMembership.get("rf0").getAsLong(),
-                                roleMembership.get("rf1").getAsLong(),
-                                roleMembership.get("rf2").getAsLong(),
-                                roleMembership.get("rf3").getAsLong()
-                        };
-
-                        try {
-                            HttpRequest rolesRequest = HttpRequest.newBuilder()
-                                    .uri(new URI(BaseUrl + "planets/" + PlanetId + "/roles"))
-                                    .headers(BaseHeaders)
-                                    .GET()
-                                    .build();
-
-                            return http.sendAsync(rolesRequest, HttpResponse.BodyHandlers.ofString())
-                                    .thenApply(rolesResponse -> {
-                                        var roles = JsonParser.parseString(rolesResponse.body()).getAsJsonArray();
-                                        long combined = 0L;
-
-                                        for (var roleElement : roles) {
-                                            var role = roleElement.getAsJsonObject();
-                                            int flagBitIndex = role.get("flagBitIndex").getAsInt();
-                                            int rfIndex = flagBitIndex / 64;
-                                            int bitIndex = flagBitIndex % 64;
-
-                                            if ((rf[rfIndex] & (1L << bitIndex)) != 0) {
-                                                if (role.get("isAdmin").getAsBoolean()) return true;
-                                                combined |= role.get("permissions").getAsLong();
-                                            }
-                                        }
-
-                                        return combined == -1L || (combined & permission) == permission;
-                                    });
-                        } catch (Exception ex) {
-                            LogToConsole("Error fetching roles: " + ex.getMessage());
-                            return CompletableFuture.completedFuture(false);
-                        }
-                    });
-        } catch (Exception ex) {
-            LogToConsole("Error checking permission for member " + memberId);
-            LogToConsole(ex.getMessage());
-            return CompletableFuture.completedFuture(false);
-        }
-    }
-
-    public Future<User> GetUserAsync(long userId) {
-        var cached = GetCachedUser(userId);
-        if (cached != null) {
-            return CompletableFuture.supplyAsync(() -> { return cached; });
-        }
-
-        try {
-            HttpRequest authRequest = HttpRequest.newBuilder()
-                    .uri(new URI(BaseUrl + "users/" + userId))
-                    .headers(BaseHeaders)
-                    .GET()
-                    .build();
-
-            return http.sendAsync(authRequest, HttpResponse.BodyHandlers.ofString())
-                    .thenApply((result) -> {
-                        var user = Gson.fromJson(result.body(), User.class);
-                        SetCachedUser(user);
-                        return user;
-                    });
-        } catch (Exception ex) {
-            LogToConsole("Failed to fetch user " + userId);
-            LogToConsole(ex.getMessage());
-            return null;
-        }
-    }
-
-    private TaskResult ConnectToChannel(long channelId) {
-        var result = _signalR.invoke(TaskResult.class, "JoinChannel", channelId);
-        return result.blockingGet();
     }
 }

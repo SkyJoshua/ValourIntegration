@@ -6,6 +6,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
+import xyz.skyjoshua.valourIntegration.helpers.ValourMessage;
 
 
 public class JoinListener implements Listener {
@@ -27,7 +28,7 @@ public class JoinListener implements Listener {
             }
         }
 
-        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
+        ValourMessage.SendAsync(_valourIntegration, message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);

@@ -1,7 +1,5 @@
 package xyz.skyjoshua.valourIntegration.models;
 
-import java.util.Date;
-
 public class User {
     public long id;
     public String pfpUrl;

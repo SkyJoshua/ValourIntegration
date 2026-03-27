@@ -7,6 +7,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
+import xyz.skyjoshua.valourIntegration.helpers.ValourMessage;
 
 import java.net.http.WebSocket;
 
@@ -29,7 +30,7 @@ public class LeaveListener implements Listener {
             }
         }
 
-        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
+        ValourMessage.SendAsync(_valourIntegration, message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);

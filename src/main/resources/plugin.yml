@@ -7,3 +7,14 @@ description: Integration between Valour.gg and Minecraft!
 website: https://skyjoshua.xyz
 softdepend:
   - PremiumVanish
+
+commands:
+  link:
+    description: Links your Minecraft Account to your Valour Account
+    usage: /link
+    aliases: ["vlink"]
+
+permissions:
+  valourintegration.link:
+    description: Gives access to the /link command.
+    default: not op

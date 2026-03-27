@@ -7,6 +7,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
+import xyz.skyjoshua.valourIntegration.helpers.ValourMessage;
 
 import java.util.Locale;
 
@@ -32,7 +33,7 @@ public class ChatListener implements Listener {
                 .replace("{message}", content);
 
 
-        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
+        ValourMessage.SendAsync(_valourIntegration, message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);

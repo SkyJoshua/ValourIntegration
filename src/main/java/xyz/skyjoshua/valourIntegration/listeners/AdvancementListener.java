@@ -7,6 +7,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import xyz.skyjoshua.valourIntegration.ValourIntegration;
+import xyz.skyjoshua.valourIntegration.helpers.ValourMessage;
 
 import java.util.Locale;
 
@@ -33,7 +34,7 @@ public class AdvancementListener implements Listener {
                 .replace("{name}", event.getPlayer().getName())
                 .replace("{advancement}", title);
 
-        _valourIntegration.SendValourMessage(message).thenAccept(result -> {
+        ValourMessage.SendAsync(_valourIntegration, message).thenAccept(result -> {
             if (!result.Success) {
                 _valourIntegration.LogToConsole("Error sending Valour message");
                 _valourIntegration.LogToConsole(result.Message);
